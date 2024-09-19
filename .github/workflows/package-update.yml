@@ -1,0 +1,258 @@
+name: package-release
+run-name: "Package build (${{ github.event_name }}) by @${{ github.actor }}"
+on:
+#  schedule:
+#    - cron: "10 */8 * * *"
+  workflow_dispatch:
+    inputs:
+      forceRebuild:
+        type: boolean
+        description: Force package creation.
+        default: false
+        required: true
+      tagMode:
+        type: choice
+        description: Version raise mode.
+        required: true
+        default: 'patch'
+        options:
+          - major
+          - minor
+          - patch
+      scriptDebug:
+        type: boolean
+        description: Script debug.
+        default: false
+        required: true
+  push:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronized
+      - ready_for_review
+    branches:
+      - main
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    if: ${{ (github.event_name == 'scheduled' && github.ref_name == 'name') || (github.event_name == 'workflow_dispatch' && github.ref_name == 'main' ) || (github.event_name == 'push') || (github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main') }}
+    permissions:
+      # actions: read|write|none
+      actions: none
+      # checks: read|write|none
+      checks: none
+      # contents: read|write|none
+      contents: write
+      # deployments: read|write|none
+      deployments: none
+      # id-token: read|write|none
+      id-token: none
+      # issues: read|write|none
+      issues: none
+      # discussions: read|write|none
+      discussions: none
+      # packages: read|write|none
+      packages: none
+      # pages: read|write|none
+      pages: none
+      # pull-requests: read|write|none
+      pull-requests: none
+      # repository-projects: read|write|none
+      repository-projects: read
+      # security-events: read|write|none
+      security-events: none
+      # statuses: read|write|none
+      statuses: none
+    steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+          with:
+            # Checkout everything to get access to the tags
+            fetch-depth: 0
+            fetch-tags: true
+
+        - name: Prepare control flags
+          run: |
+            # Create package (release) even if no new TYPO3 patchlevel version is available 
+            forceRebuild="0"
+            [[ "${{ github.event.inputs.forceRebuild }}" == 'true' ]] && forceRebuild=1
+            
+            # Define the version tag raise mode: major, minor or patch level
+            # In case it was a schedule or push on main we fallback to the
+            # --patch level. In case of an `workflow_dispatch` this is set
+            # as option.
+            versionTagMode="--patch"
+            [[ -n "${{ github.event.inputs.tagMode }}" ]] && versionTagMode="--${{ github.event.inputs.tagMode }}"
+            
+            scriptDebug=0
+            [[ "${{ github.event.inputs.scriptDebug }}" == 'true' ]] && scriptDebug=1
+            
+            # on main brach push events we also enforces a full rebuild, even if no update occured
+            doOnlyBuild=0
+            [[ "${{ github.event_name }}" == "push" ]] && doOnlyBuild=1 && forceRebuild=1
+            [[ "${{ github.event_name }}" == "push_request" ]] && doOnlyBuild=1 && forceRebuild=1
+            
+            # push prepared flags as environment variables
+            echo "VERSION_TAG_MODE=${versionTagMode}" >> $GITHUB_ENV
+            echo "FORCE_REBUILD=${forceRebuild}" >> $GITHUB_ENV
+            echo "SCRIPT_DEBUG=${scriptDebug}" >> $GITHUB_ENV
+            echo "DO_ONLY_BUILD=${doOnlyBuild}" >> $GITHUB_ENV
+
+        - name: Set git commit author
+          shell: bash
+          run: |
+            git config --global user.email "stefan@buerk.tech" \
+              && git config --global user.name "[PACKAGE-SCRIPT]"            
+
+        - name: Variable debug
+          shell: bash
+          run: |
+            echo ">> VERSION_TAG_MODE.: ${VERSION_TAG_MODE}"
+            echo ">> FORCE_REBUILD....: ${FORCE_REBUILD}"
+            echo ">> SCRIPT_DEBUG.....: ${SCRIPT_DEBUG}"
+            
+
+        - name: Install ddev
+          shell: bash
+          run: |
+              # Add DDEV’s GPG key to your keyring
+              sudo sh -c 'echo ""'
+              sudo apt-get update && sudo apt-get install -y curl
+              sudo install -m 0755 -d /etc/apt/keyrings
+              curl -fsSL https://pkg.ddev.com/apt/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/ddev.gpg > /dev/null
+              sudo chmod a+r /etc/apt/keyrings/ddev.gpg
+              
+              # Add DDEV releases to your package repository
+              sudo sh -c 'echo ""'
+              echo "deb [signed-by=/etc/apt/keyrings/ddev.gpg] https://pkg.ddev.com/apt/ * *" | sudo tee /etc/apt/sources.list.d/ddev.list >/dev/null
+              
+              # Update package information and install DDEV
+              sudo sh -c 'echo ""'
+              sudo apt-get update && sudo apt-get install -y ddev
+              
+              # One-time initialization of mkcert
+              mkcert -install            
+
+        - name: Build only when update is available
+          shell: bash
+          run: |
+            if [[ "${FORCE_REBUILD:-0}" -eq 1 ]]; then
+              echo ">> Rebuild package"
+              CREATE_GIT_COMMIT=1 SCRIPT_DEBUG=${SCRIPT_DEBUG:-0} scripts/create-packages.sh || true
+            else
+              echo ">> Build package only if update available"
+              CREATE_GIT_COMMIT=1 SCRIPT_DEBUG=${SCRIPT_DEBUG:-0} scripts/auto-update.sh || true
+            fi
+            
+            if [[ "${SCRIPT_DEBUG:-0}" -eq 1 ]]; then
+              ls -l .tarballs/
+              git status
+              git log -n 5
+              git tag
+            fi
+            
+            exit 0            
+            
+
+        - name: check if release should be done
+          shell: bash
+          run: |
+            
+            if [[ "${SCRIPT_DEBUG:-0}" -eq 1 ]]; then
+              ls -l .tarballs
+            fi            
+            
+            releaseRequirementsMet=1            
+            [[ ! -f .tarballs/legacy-db.sql.tgz ]] && echo ">> .tarballs/legacy-db.sql.tgz missing" && releaseRequirementsMet=0
+            [[ ! -f .tarballs/legacy-files.tgz ]] && echo ">> .tarballs/legacy-files.tgz missing" && releaseRequirementsMet=0
+            [[ ! -f .tarballs/legacy-source.tgz ]] && echo ">> .tarballs/legacy-source.tgz missing" && releaseRequirementsMet=0
+            [[ ! -f .tarballs/composer-db.sql.tgz ]] && echo ">> .tarballs/composer-db.sql.tgz missing" && releaseRequirementsMet=0
+            [[ ! -f .tarballs/composer-files.tgz ]] && echo ">> .tarballs/composer-files.tgz missing" && releaseRequirementsMet=0
+            [[ ! -f .tarballs/composer-source.tgz ]] && echo ">> composer-source.tgz missing " && releaseRequirementsMet=0            
+            [[ ! -f .tarballs/VERSION_CURRENT ]] && echo ">> .tarballs/VERSION_CURRENT missing" && releaseRequirementsMet=0            
+            [[ ! -f .tarballs/VERSION_CREATED ]] && echo ">> .tarballs/VERSION_CREATED missing" && releaseRequirementsMet=0
+            
+            UNPUSHED_COUNT="$( git rev-list --count origin/${{ github.ref_name }}..${{ github.ref_name }} )"
+            [[ "${UNPUSHED_COUNT}" -eq 0 ]] && echo ">> No unpushed commits" && releaseRequirementsMet=0
+            
+            if [[ "${releaseRequirementsMet}" -eq 0 ]]; then
+              echo ">> Requirements not met, don't release 🥵"
+              echo "SHOULD_RELEASE=0" >> $GITHUB_ENV
+            else
+              echo ">> Requirements met, do release 🤩"
+              echo "SHOULD_RELEASE=1" >> $GITHUB_ENV
+            fi
+
+        - name: "Validate on main branch pushes"
+          shell: bash
+          if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+          run: |
+            [[ "${SHOULD_RELEASE}" -eq 1 ]] && echo ">> Build successfully and could be released. Success." && exit 0
+            
+            echo ">> Build seems to have failed. Release not possible."
+            exit 1
+
+        - name: "Create commit tag ${{ env.VERSION_TAG_MODE }}"
+          shell: bash
+          if: github.event_name != 'push' && github.event_name != 'pull_request' && github.ref_name == 'main' && env.SHOULD_RELEASE == 1
+          run: |
+            echo ">> scripts/versions-up.sh --release ${VERSION_TAG_MODE:-\"--patch\"} --apply"
+            scripts/versions-up.sh --release ${VERSION_TAG_MODE:-"--patch"} --apply
+            LAST_TAG="$( git tag --points-at HEAD )"
+            [[ -z "${LAST_TAG}" ]] && echo ">> NO TAG FOUND" && echo "TAG_VALID=0" >> $GITHUB_ENV && echo "USE_TAG=${LAST_TAG}" >> $GITHUB_ENV
+            [[ -n "${LAST_TAG}" ]] && echo ">> TAG FOUND" && echo "TAG_VALID=1" >> $GITHUB_ENV && echo "USE_TAG=${LAST_TAG}" >> $GITHUB_ENV
+            
+            if [[ "${SCRIPT_DEBUG:-0}" -eq 1 ]]; then
+              ls -l .tarballs/
+              git status
+              git log -n 5
+              git tag
+            fi            
+
+        - name: Push changes
+          uses: ad-m/github-push-action@master
+          if: github.event_name != 'push' && github.event_name != 'pull_request' && github.ref_name == 'main' && env.SHOULD_RELEASE == 1 && env.TAG_VALID == 1
+          with:
+            tags: true
+
+        - name: create release with artifact upload
+          shell: bash
+          if: github.event_name != 'push' && github.event_name != 'pull_request' && github.ref_name == 'main' && env.SHOULD_RELEASE == 1 && env.TAG_VALID == 1
+          env:
+            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          run: |
+            # This is a safety check to ensure that we have a correct tag to use for the result
+            [[ -z "${USE_TAG}" ]] && echo ">> ERR: empty USE_TAG" && exit 1
+            
+            VERSION_CREATED="$( cat .tarballs/VERSION_CREATED )"
+            VERSION_CURRENT="$( cat .tarballs/VERSION_CURRENT )"
+            if [[ "${VERSION_CREATED}" == "${VERSION_CURRENT}" ]]; then
+              T3V_LABEL="Rebuild with TYPO3 v${VERSION_CURRENT}"
+            else
+              T3V_LABEL="Updated from TYPO3 v${VERSION_CURRENT} to ${VERSION_CREATED}"
+            fi
+            echo "T3V_LABEL: ${T3V_LABEL}"
+            
+            if [[ "${SCRIPT_DEBUG:-0}" -eq 1 ]]; then
+              ls -l .tarballs/*.tgz
+              git status
+              git log -n 5
+              git tag
+            fi          
+            
+            if [[ "${TAG_VALID}" -eq 1 ]]; then
+              gh release create \
+                  ${USE_TAG} \
+                  --generate-notes \
+                  --verify-tag \
+                  --title "[RELEASE] ${USE_TAG}: ${T3V_LABEL}" \
+                  .tarballs/*.tgz
+              echo ">> Release created
+            else
+              echo ">> Failed to create release
+            fi
+

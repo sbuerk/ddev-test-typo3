@@ -1,0 +1,54 @@
+<html
+    xmlns:f="http://typo3.org/ns/TYPO3/CMS/Fluid/ViewHelpers"
+    xmlns:core="http://typo3.org/ns/TYPO3/CMS/Core/ViewHelpers"
+    data-namespace-typo3-fluid="true"
+>
+
+<f:layout name="Module" />
+
+<f:section name="Content">
+
+    <f:be.pageRenderer
+        includeJavaScriptModules="{
+            0: '@typo3/backend/security/element/csp-reports.js'
+        }"
+    />
+    <h1>Content Security Policy</h1>
+
+
+    <f:if condition="{configurationStatus.featureDisabled.backend} || {configurationStatus.featureDisabled.frontend}">
+        <f:be.infobox state="-1">
+            <p>
+                <f:translate key="LLL:EXT:backend/Resources/Private/Language/Modules/content-security-policy.xlf:module.callout.featureDisabled.message" />
+            </p>
+            <ul class="mb-0">
+                <f:for each="{configurationStatus.featureDisabled}" as="dispositions" key="scope">
+                    <f:for each="{dispositions}" as="disposition" iteration="iteration">
+                        <li><code>security.{scope}.{disposition}ContentSecurityPolicy</code></li>
+                    </f:for>
+                </f:for>
+            </ul>
+        </f:be.infobox>
+    </f:if>
+
+    <f:if condition="{configurationStatus.customReporting.BE} || {configurationStatus.customReporting.FE}">
+        <f:be.infobox state="-1">
+            <p>
+                <f:translate key="LLL:EXT:backend/Resources/Private/Language/Modules/content-security-policy.xlf:module.callout.customReporting.message" />
+            </p>
+            <ul class="mb-0">
+                <f:for each="{configurationStatus.customReporting}" as="value" key="key">
+                    <li><code>$GLOBALS['TYPO3_CONF_VARS']['{key}']['contentSecurityPolicyReportingUrl'] = '{value}'</code></li>
+                </f:for>
+            </ul>
+        </f:be.infobox>
+    </f:if>
+
+    <typo3-backend-security-csp-reports
+        scopes="{scopes -> f:format.json()}"
+        controlUri="{controlUri}">
+    </typo3-backend-security-csp-reports>
+
+</f:section>
+
+</html>

@@ -1,0 +1,33 @@
+# ide's and editors
+.idea/
+#
+# ddev
+.ddev/
+#
+# scripts/version-up.sh artifacts
+/version.properties
+# ignore invalid configuraiton files, ddev pull-request to fix merged but not released yet
+# see:  https://github.com/ddev/ddev/pull/6525
+/legacy/typo3conf/AdditionalConfiguration.php
+#
+# packaging folder
+/.tarballs/*.tar.gz
+/.tarballs/*.sql
+/.tarballs/*.zip
+/.tarballs/*.tgz
+/.tarballs/VERSION_CREATED
+/.tarballs/VERSION_CURRENT
+#
+# composer installation
+/var/
+/public/typo3temp/
+/config/system/additional.php
+#
+# legacy installation
+/legacy/typo3_src-*
+/legacy/typo3_src
+/legacy/typo3
+/legacy/index.php
+/legacy/typo3temp/
+/legacy/typo3conf/system/additional.php
+/legacy/typo3conf/ext/test_package_initialization/

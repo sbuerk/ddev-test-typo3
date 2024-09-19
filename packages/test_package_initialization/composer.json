@@ -1,0 +1,20 @@
+{
+	"name": "ddev/test-package-initialization",
+	"type": "typo3-cms-extension",
+	"description": "Helper for test package initialization.",
+	"license": "GPL-2.0-or-later",
+	"require": {
+		"typo3/cms-core": "^12",
+		"typo3/cms-backend": "^12"
+	},
+	"extra": {
+		"typo3/cms": {
+			"extension-key": "test_package_initialization"
+		}
+	},
+	"autoload": {
+		"psr-4": {
+			"DDEV\\TestPackageInitialization\\": "Classes/"
+		}
+	}
+}

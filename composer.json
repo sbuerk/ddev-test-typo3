@@ -1,0 +1,31 @@
+{
+    "name": "ddev/test-typo3-12-composer",
+    "description": "TYPO3 v12 composer mode instance used as DDEV testpackage",
+    "type": "project",
+    "homepage": "https://github.com/typo3/",
+    "license": "GPL-2.0-or-later",
+    "minimum-stability": "stable",
+    "require": {
+        "typo3/cms-backend": "^12.4.20",
+        "typo3/cms-core": "^12.4.20",
+        "typo3/cms-extbase": "^12.4.20",
+        "typo3/cms-extensionmanager": "^12.4.20",
+        "typo3/cms-filelist": "^12.4.20",
+        "typo3/cms-fluid": "^12.4.20",
+        "typo3/cms-frontend": "^12.4.20",
+        "typo3/cms-install": "^12.4.20",
+        "ddev/test-package-initialization": "@dev"
+    },
+    "config": {
+        "allow-plugins": {
+            "typo3/class-alias-loader": true,
+            "typo3/cms-composer-installers": true
+        }
+    },
+    "repositories": {
+        "local": {
+            "type": "path",
+            "url": "packages/*"
+        }
+    }
+}
